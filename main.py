@@ -1,38 +1,51 @@
 from glob import glob
+import matplotlib
 import scipy.io.wavfile as wavfile
 import numpy as np
-from matplotlib import pyplot as plt
-import matplotlib
-from scipy.fftpack import fft
 import pandas as pd
+from scipy.fftpack import fft
+
+
+def identificar_nota(indice: int, notas):
+    """Identifica a nota correspondente ao áudio especificado pelo índice."""
+    limite_minimo = 0.1 * np.max(densidades_espectrais[indice])
+    indices_validos = densidades_espectrais[indice] > limite_minimo
+
+    frequencias_filtradas = frequencias[indice][indices_validos]
+
+    # Verificar qual nota está mais próxima da frequência dominante
+    frequencia_dominante = frequencias_filtradas[np.argmax(densidades_espectrais[indice][indices_validos])]
+    diferencas = notas[['1ª Harmônica (Hz)', '2ª Harmônica (Hz)']].apply(
+        lambda x: np.min(np.abs(x - frequencia_dominante)), axis=1
+    )
+    nota_mais_proxima = notas.iloc[np.argmin(diferencas)]
+
+    return nota_mais_proxima['Nota'], frequencia_dominante
+
 
 if __name__ == '__main__':
-    matplotlib.use('TkAgg')
-    # pegar arquivos
-    notes = pd.read_csv('notas.csv')
-    sound_files = glob(r'./Violão/*.wav')
-    frequency = 16_000
-    period = 1 / frequency
+    matplotlib.use('TkAgg')  # Carregar metadados dos áudios
+    notas = pd.read_csv('notas.csv')
+    print(type(notas))
+    arquivos_som = glob(r'./Violão/*.wav')
 
-    sound_data = [
-        wavfile.read(s)[1]
-        for s in sound_files
-    ]
-    audio_lengths = [
-        len(sound_data[d]) / frequency
-        for d in range(len(sound_data))
-    ]
-    time_intervals = [
-        np.arange(0, audio_lengths[a], period)
-        for a in range(len(audio_lengths))
-    ]
-    frequencies = [
-        (np.fft.fftfreq(len(sound_data[d]), period))
-        for d in range(len(sound_data))
-    ]
-    f_hats = [fft(d) for d in sound_data]
-    spectral_densities = [abs(fh) for fh in f_hats]
+    if not arquivos_som:
+        raise FileNotFoundError("Nenhum arquivo .wav encontrado no diretório './Violão/'.")
 
-    plt.figure()
-    plt.plot(frequencies[0], spectral_densities[0])
-    plt.show()
+    frequencia_amostragem = 16_000
+    periodo = 1 / frequencia_amostragem
+
+    # Ler e processar dados de áudio
+    dados_audio = [wavfile.read(arquivo)[1] for arquivo in arquivos_som]
+    frequencias = [np.fft.fftfreq(len(dados), periodo) for dados in dados_audio]
+
+    # Realizar FFT e calcular densidades espectrais
+    transformadas_fft = [fft(dados) for dados in dados_audio]
+    densidades_espectrais = [np.abs(fft_dados) for fft_dados in transformadas_fft]
+
+    # Identificar e exibir nota correspondente a cada áudio
+    for i, arquivo in enumerate(arquivos_som):
+        nota, freq_dominante = identificar_nota(indice=i, notas=notas)
+        print(f"Arquivo: {arquivo}, Nota: {nota}, Frequência Dominante: {freq_dominante:.2f} Hz")
+
+
