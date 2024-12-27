@@ -1,10 +1,10 @@
 from glob import glob
-import scipy.io.wavfile as wavfile
-import numpy as np
-import time
-import pandas as pd
-from scipy.fft import rfft, rfftfreq
 from typing import List, Tuple
+
+import numpy as np
+import pandas as pd
+import scipy.io.wavfile as wavfile
+from scipy.fft import rfft, rfftfreq
 
 
 def carregar_dados_audio(arquivos_audio: List[str]) -> List[np.ndarray]:
@@ -15,25 +15,38 @@ def carregar_dados_audio(arquivos_audio: List[str]) -> List[np.ndarray]:
 def calcular_fft(
         dados_audio: List[np.ndarray], frequencia_amostragem: float
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-
     """Calcula a Transformada de Fourier e retorna as densidades espectrais e frequências correspondentes."""
     periodo = 1 / frequencia_amostragem
     transformadas = [rfft(dados) for dados in dados_audio]
-    densidades_espectrais = [np.abs(fft_dados) for fft_dados in transformadas]
+    densidades_espectrais = [abs(fft_dados) for fft_dados in transformadas]
     frequencias = [rfftfreq(len(dados), periodo) for dados in dados_audio]
 
     return densidades_espectrais, frequencias
 
 
-def filtrar_frequencias(densidade: np.ndarray, frequencias: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def filtrar_frequencias(
+        densidade: np.ndarray, frequencias: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """Filtra as frequências com base em uma densidade mínima de 10% do pico."""
     limite_minimo = 0.1 * np.max(densidade)
     indices_validos = densidade > limite_minimo
     return frequencias[indices_validos], densidade[indices_validos]
 
 
+def verificar_desafinacao(frequencia_dominante: float, frequencia_esperada: float, tolerancia: float = 1.0) -> str:
+    """ Verifica se a corda está desafinada e sugere ajustes. """
+    diferenca = frequencia_dominante - frequencia_esperada
+
+    if abs(diferenca) <= tolerancia:
+        return "Afinada"
+    elif diferenca > tolerancia:
+        return "Afrouxe a corda"
+    else:
+        return "Aperte a corda"
+
+
 def identificar_nota(
-    densidade_espectral: np.ndarray, frequencias: np.ndarray, notas: pd.DataFrame
+        densidade_espectral: np.ndarray, frequencias: np.ndarray, notas: pd.DataFrame
 ) -> Tuple[str, float]:
     """Identifica a nota correspondente ao espectro de áudio fornecido."""
     frequencias_filtradas, espectro_filtrado = filtrar_frequencias(densidade_espectral, frequencias)
@@ -53,40 +66,38 @@ def identificar_nota(
 
 def processar_audio(arquivos_audio: List[str], notas: pd.DataFrame, frequencia_amostragem: float) -> pd.DataFrame:
     """Processa todos os arquivos de áudio e retorna as notas identificadas e suas frequências dominantes."""
-    # Carregar dados de áudio
     dados_audio = carregar_dados_audio(arquivos_audio)
-
-    # Calcular FFTs e densidades espectrais
     densidades_espectrais, frequencias = calcular_fft(dados_audio, frequencia_amostragem)
 
-    # Identificar notas
-    resultado = {'Arquivo': [], 'Nota': [], 'Frequência Dominante': []}
+    resultado = {'Arquivo': [], 'Nota': [], 'Frequência Dominante': [], 'Status': []}
     for i, arquivo in enumerate(arquivos_audio):
         nota, freq_dominante = identificar_nota(densidades_espectrais[i], frequencias[i], notas)
+        frequencia_esperada = notas.loc[notas['Nota'] == nota, '1ª Harmônica (Hz)'].values[0]
+        status = verificar_desafinacao(freq_dominante, frequencia_esperada)
+
         resultado['Arquivo'].append(arquivo)
         resultado['Nota'].append(nota)
         resultado['Frequência Dominante'].append(round(freq_dominante, 2))
+        resultado['Status'].append(status)
 
     return pd.DataFrame(resultado)
 
 
 def main():
     """Função principal para execução do programa."""
-    t0 = time.time()
 
     # Carregar as notas e arquivos de áudio
     notas = pd.read_csv('notas.csv')
     arquivos_audio = glob('./Violão/*.wav')
 
     # Frequência de amostragem do áudio
-    frequencia_amostragem = 16_000
+    frequencia_de_amostragem = 16_000
 
     # Processar os áudios
-    resultado = processar_audio(arquivos_audio, notas, frequencia_amostragem)
+    resultado = processar_audio(arquivos_audio, notas, frequencia_de_amostragem)
 
     # Exibir resultados e tempo total
     print(resultado)
-    print(f"Tempo total: {time.time() - t0:.2f} segundos")
 
 
 if __name__ == '__main__':
