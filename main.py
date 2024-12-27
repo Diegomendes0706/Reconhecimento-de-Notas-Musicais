@@ -24,19 +24,23 @@ def calcular_fft(
     return densidades_espectrais, frequencias
 
 
-def filtrar_frequencias(
-        densidade: np.ndarray, frequencias: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+def filtrar_frequencias(densidade: np.ndarray, frequencias: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """Filtra as frequências com base em uma densidade mínima de 10% do pico."""
     limite_minimo = 0.1 * np.max(densidade)
     indices_validos = densidade > limite_minimo
     return frequencias[indices_validos], densidade[indices_validos]
 
 
-def verificar_desafinacao(frequencia_dominante: float, frequencia_esperada: float, tolerancia: float = 1.0) -> str:
-    """ Verifica se a corda está desafinada e sugere ajustes. """
-    diferenca = frequencia_dominante - frequencia_esperada
+def verificar_desafinacao(
+        frequencia_dominante: float, frequencias_harmonicas: List[float], tolerancia: float = 1.0
+) -> str:
+    """Verifica se a corda está desafinada com base na frequência dominante e nas harmônicas."""
+    # Encontre a harmônica mais próxima da frequência dominante
+    diferencas = [abs(frequencia_dominante - f) for f in frequencias_harmonicas]
+    harmonica_mais_proxima = frequencias_harmonicas[np.argmin(diferencas)]
+    diferenca = frequencia_dominante - harmonica_mais_proxima
 
+    # Determinar condição de afinação
     if abs(diferenca) <= tolerancia:
         return "Afinada"
     elif diferenca > tolerancia:
@@ -58,9 +62,7 @@ def identificar_nota(
     harm1_diff = np.abs(notas['1ª Harmônica (Hz)'].values - frequencia_dominante)
     harm2_diff = np.abs(notas['2ª Harmônica (Hz)'].values - frequencia_dominante)
     diferencas = np.minimum(harm1_diff, harm2_diff)
-
     nota_mais_proxima = notas.iloc[np.argmin(diferencas)]
-
     return nota_mais_proxima['Nota'], float(frequencia_dominante)
 
 
@@ -72,8 +74,12 @@ def processar_audio(arquivos_audio: List[str], notas: pd.DataFrame, frequencia_a
     resultado = {'Arquivo': [], 'Nota': [], 'Frequência Dominante': [], 'Status': []}
     for i, arquivo in enumerate(arquivos_audio):
         nota, freq_dominante = identificar_nota(densidades_espectrais[i], frequencias[i], notas)
-        frequencia_esperada = notas.loc[notas['Nota'] == nota, '1ª Harmônica (Hz)'].values[0]
-        status = verificar_desafinacao(freq_dominante, frequencia_esperada)
+
+        # Extraindo todas as harmônicas da nota identificada
+        frequencias_harmonicas = notas.loc[notas['Nota'] == nota, ['1ª Harmônica (Hz)', '2ª Harmônica (Hz)']].values[0]
+
+        # Verificar desafinação usando todas as harmônicas
+        status = verificar_desafinacao(freq_dominante, frequencias_harmonicas)
 
         resultado['Arquivo'].append(arquivo)
         resultado['Nota'].append(nota)
